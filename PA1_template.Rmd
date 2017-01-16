@@ -4,22 +4,120 @@ output:
   html_document:
     keep_md: true
 ---
-
-
+This data analysis was done using the dplyr and ggplot2 packages.
+```{r, echo=TRUE}
+library(dplyr)
+library(ggplot2)
+```
 ## Loading and preprocessing the data
-
-
+The provided activity.csv contains the step count in 5 minute intervals over two months during October and November, 2012.  The data was read in using read.csv(), and then converted into a tbl using tbl_df.
+```{r, echo=TRUE}
+actdat<- read.csv("activity.csv")
+actdat<- tbl_df(actdat)
+print(actdat)
+```
 
 ## What is mean total number of steps taken per day?
+The sum of the number of steps recorded in each 5 minute interval for eachday was calculated using the dplyr summarize function.
+```{r, echo=TRUE}
+steps_DailySum <- group_by(actdat,date) %>% summarize(sumsteps=sum(steps,na.rm=TRUE))
+```
+```{r, echo=TRUE}
+sum_steps <- ggplot(data=steps_DailySum, aes(steps_DailySum$sumsteps),xlab = "Total Steps Per Day")+ geom_histogram(binwidth=500.0, col="blue",fill="blue",alpha=0.5) + labs(title="Total Steps Per Day from Activity Monitor Data") + labs(x="Total Steps Per Day", y="Count")
 
+print(sum_steps)
+```
 
+```{r, echo=TRUE}
+ttl_steps_mean <- summarize(steps_DailySum, Mean_DailySum=mean(sumsteps,na.rm=TRUE))
+ttl_steps_mean <- as.numeric(ttl_steps_mean[1,1])
+
+ttl_steps_median <- summarize(steps_DailySum, Mean_DailySum=median(sumsteps,na.rm=TRUE))
+ttl_steps_median <- as.numeric(ttl_steps_median[1,1])
+```
+The mean of the total number of steps counted in a day is `r ttl_steps_mean`, and the median is `r ttl_steps_median`.  
 
 ## What is the average daily activity pattern?
+To examine the average daily activity pattern the data is grouped by the 5 minute intervals and summarize is then used to calculate the average of each interval over all days.
+```{r, echo=TRUE}
+steps_IntMean <- group_by(actdat,interval) %>% summarize(meanInterval=mean(steps,na.rm=TRUE))
+```
 
+```{r, echo=TRUE}
+plot_IntMean <- ggplot(data=steps_IntMean, aes(x=interval,y=meanInterval))+ geom_line(col="blue", alpha=0.65)+geom_point(col="blue") + labs(title="Averge Daily Activity") + labs(x="5 Minute Interval", y="Mean Steps")
+print(plot_IntMean)
+```
 
+```{r}
+which(steps_IntMean[,2]==max(steps_IntMean[,2]))
+```
+The 104 five minute interval contains the highest average number of steps per day over the data set.
 
 ## Imputing missing values
+As there are a number of days with intervals that were not recorded it is useful to attempt to fill in the missing values.
+### Total Number of Missing Values
+```{r, echo=TRUE}
+StepsisNA <-is.na(actdat[,1])
+sum_StepsisNA <-sum(StepsisNA)
+numIntervals <-nrow(actdat)
+percentNA <- sum_StepsisNA/numIntervals
+```
+In total of there are `r sum_StepsisNA` entries missing, that is `r percentNA`% of the total number of entries in the data set.
 
+### Filling In Missing Values
+To fill in the missing values the average number of steps in a given interval over all days is used to fill in each missing value.
+```{r, echo=TRUE}
+actdat2<-actdat
+for(i in 1:nrow(actdat2)){
+  if(StepsisNA[i] == TRUE){
+    actdat2[i,1]= steps_IntMean[i,2]
+  }
+}
+```
+The total number of steps per day can then be histogrammed as was done with the pre-replacement data set.
+```{r, echo=TRUE}
+steps_DailySum2 <- group_by(actdat2,date) %>% summarize(sumsteps=sum(steps,na.rm=TRUE))
+sum_steps2 <- ggplot(data=steps_DailySum2, aes(steps_DailySum2$sumsteps),xlab = "Total Steps Per Day")+ geom_histogram(binwidth=500.0, col="red",fill="red",alpha=0.5) + labs(title="Total Steps Per Day Replacing NA with Interval Averages") + labs(x="Total Steps Per Day", y="Count")
+print(sum_steps2)
+```
 
+Some changes are seen in this plot compared to the previous one.
+```{r, echo=TRUE}
+ttl_steps_mean2 <- summarize(steps_DailySum2, Mean_DailySum=mean(sumsteps,na.rm=TRUE))
+ttl_steps_mean2 <- as.numeric(ttl_steps_mean2[1,1])
+ttl_steps_median2 <- summarize(steps_DailySum2, median_DailySum=median(sumsteps,na.rm=TRUE))
+ttl_steps_median2 <- as.numeric(ttl_steps_median2[1,1])
+```
+In the data set where the NA values have been replaced, the mean of the total number of steps counted in a day is `r ttl_steps_mean2`, and the median is `r ttl_steps_median2`.
+```{r, echo=TRUE}
+diff_ttl_steps_mean <- ttl_steps_mean - ttl_steps_mean2
+diff_ttl_steps_median<-  ttl_steps_median - ttl_steps_median2
+```
+The original data set mean is different from the replaced data set by `r diff_ttl_steps_mean`.  The median has also changed by `r diff_ttl_steps_median`.
+
+Plotting histogram of the difference between the total daily steps of the two data sets shows that while most of the differences are small there is one day where the difference is over 9000, which would appear to be a day that was completely or nearly completely NA values.
+```{r, echo=TRUE}
+diff_steps <- steps_DailySum
+diff_steps$diff <- (steps_DailySum$sumsteps - steps_DailySum2$sumsteps)
+plot_diff_steps <- ggplot(data=diff_steps, aes(diff_steps$diff))+ geom_histogram(binwidth=100.0, col="red",fill="red",alpha=0.5) + labs(title="Difference Between Original and Replaced Total Steps") + labs(x="Difference Total Steps Per Day", y="Count")
+print(plot_diff_steps)
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+Using the data set with the replaced values the activity difference between the weekdays, Monday-Friday, and the weekend, Saturday and Sunday, will be examined.
+```{r, echo=TRUE}
+actdat2 <- mutate(actdat2, WeekDay=as.factor(ifelse(weekdays(as.POSIXlt(date)) %in% c("Saturday","Sunday"),"weekend","weekday") ) )
+```
+```{r, echo=TRUE}
+steps_IntMean_week <- group_by(actdat2,WeekDay,interval) %>% summarize(meanInterval=mean(steps,na.rm=TRUE))
+
+print(steps_IntMean_week)
+```
+
+```{r, echo=TRUE}
+#par(mfrow = c(2, 1))
+plot_IntMean <- ggplot(data=steps_IntMean_week, aes(x=interval,y=meanInterval))+ geom_line(col="blue", alpha=0.65)+geom_point(col="blue") + labs(title="Averge Daily Activity") + labs(x="5 Minute Interval", y="Mean Steps") + facet_grid(WeekDay ~ .)
+print(plot_IntMean)
+```
+
+As can be seen the weekday activity has two peaks with an intermediate range between, and the weekend data has a more constant level of activity.
